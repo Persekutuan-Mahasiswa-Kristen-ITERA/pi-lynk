@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+#client id
+client_secret_933046104600-8mrekh281icelmfrr3fam5ps4hl6obj1.apps.googleusercontent.com_pi-lynk.json
