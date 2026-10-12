@@ -42,14 +42,24 @@ const TurnstileWidget = forwardRef<TurnstileWidgetRef, TurnstileWidgetProps>(
   ({ onVerify, className = '' }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const widgetIdRef = useRef<string | null>(null);
+    const onVerifyRef = useRef(onVerify);
     const [isDevBypass, setIsDevBypass] = useState(false);
+
+    // Simpan onVerify terbaru di ref agar effect mount di bawah tidak perlu
+    // dijalankan ulang saat identity onVerify berubah. Jika onVerify ditaruh
+    // langsung di dependency array, setiap re-render induk (mis. saat mengetik
+    // di form) akan menjalankan cleanup -> turnstile.remove() lalu render()
+    // ulang widget, yang membuat Turnstile terus berulang "verifying".
+    useEffect(() => {
+      onVerifyRef.current = onVerify;
+    }, [onVerify]);
 
     useImperativeHandle(ref, () => ({
       reset: () => {
         if (widgetIdRef.current && window.turnstile) {
           window.turnstile.reset(widgetIdRef.current);
         } else if (isDevBypass) {
-          onVerify('dev-bypass-token');
+          onVerifyRef.current('dev-bypass-token');
         }
       },
     }));
@@ -58,7 +68,7 @@ const TurnstileWidget = forwardRef<TurnstileWidgetRef, TurnstileWidgetProps>(
       // In development when siteKey is not configured, bypass verification
       if (!siteKey) {
         setIsDevBypass(true);
-        onVerify('dev-bypass-token');
+        onVerifyRef.current('dev-bypass-token');
         return;
       }
 
@@ -74,10 +84,10 @@ const TurnstileWidget = forwardRef<TurnstileWidgetRef, TurnstileWidgetProps>(
           widgetIdRef.current = window.turnstile.render(containerRef.current, {
             sitekey: siteKey,
             callback: (token: string) => {
-              onVerify(token);
+              onVerifyRef.current(token);
             },
             'expired-callback': () => {
-              onVerify('');
+              onVerifyRef.current('');
             },
             'error-callback': () => {
               console.error('Turnstile verification error');
@@ -113,7 +123,7 @@ const TurnstileWidget = forwardRef<TurnstileWidgetRef, TurnstileWidgetProps>(
           widgetIdRef.current = null;
         }
       };
-    }, [onVerify]);
+    }, []);
 
     if (isDevBypass) {
       return (
