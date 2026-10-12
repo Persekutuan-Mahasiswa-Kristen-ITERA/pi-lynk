@@ -106,12 +106,6 @@ export default function HomePage() {
             >
               pmkitera.web.id ↗
             </a>
-            <Link
-              href="/admin"
-              className="px-3 py-1.5 rounded-lg border border-brown-300 text-brown-700 hover:bg-brown-50 transition-colors"
-            >
-              Admin
-            </Link>
           </div>
         </div>
       </header>
