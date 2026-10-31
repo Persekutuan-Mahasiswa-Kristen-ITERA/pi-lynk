@@ -17,6 +17,17 @@ describe('Validasi URL Tujuan (validateDestinationUrl)', () => {
     assert.strictEqual(res.url, 'https://docs.google.com/forms/d/12345/viewform');
   });
 
+  test('Menerima skema http:// eksplisit tanpa mengubahnya ke https', () => {
+    const res = validateDestinationUrl('http://example.com/halaman', BASE_URL);
+    assert.strictEqual(res.valid, true);
+    assert.strictEqual(res.url, 'http://example.com/halaman');
+  });
+
+  test('Menolak skema selain http/https (ftp:, ws:)', () => {
+    assert.strictEqual(validateDestinationUrl('ftp://example.com/file', BASE_URL).valid, false);
+    assert.strictEqual(validateDestinationUrl('ws://example.com/socket', BASE_URL).valid, false);
+  });
+
   test('Menjaga query string dan fragment URL tetap utuh', () => {
     const res = validateDestinationUrl('https://example.com/page?ref=pmk&id=123#section-2', BASE_URL);
     assert.strictEqual(res.valid, true);
