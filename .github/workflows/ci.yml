@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, typecheck and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # package-lock.json was written by npm 11. The npm 10 bundled with
+      # Node 22 rejects it in `npm ci` (missing optional @emnapi/* entries),
+      # so install the same npm major that produced the lockfile.
+      - name: Use npm 11
+        run: npm install -g npm@11.6.1
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      # `next build` is intentionally not run here: src/app/layout.tsx uses
+      # next/font/google, which downloads fonts from fonts.googleapis.com at
+      # build time, so the build fails without network access even with
+      # placeholder env values.
