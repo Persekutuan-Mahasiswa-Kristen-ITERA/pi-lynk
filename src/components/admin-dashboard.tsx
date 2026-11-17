@@ -341,7 +341,7 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
                 className="rounded-full brightness-200"
               />
               <span className="font-serif font-bold text-lg tracking-wide">
-                PI-LYNK <span className="text-xs uppercase bg-brown-800 text-brown-200 px-2 py-0.5 rounded font-mono ml-1">Admin</span>
+                PI-LYNK <span className="text-xs uppercase bg-brown-800 text-brown-200 px-2 py-0.5 rounded font-mono ml-1">{admin ? 'Admin' : 'Pengurus'}</span>
               </span>
             </Link>
           </div>

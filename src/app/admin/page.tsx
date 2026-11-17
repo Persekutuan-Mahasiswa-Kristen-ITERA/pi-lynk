@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { connection } from 'next/server';
 import { verifyAdminSession } from '@/auth';
 import AdminDashboardClient from '@/components/admin-dashboard';
 
@@ -13,6 +14,7 @@ export const metadata = {
 export const instant = false;
 
 export default async function AdminPage() {
+  await connection(); // per-request: reads the PI-CORE session
   const auth = await verifyAdminSession();
 
   if (!auth.authorized) {

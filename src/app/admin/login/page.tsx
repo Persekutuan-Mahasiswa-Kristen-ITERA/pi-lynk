@@ -1,5 +1,6 @@
 import { getAccessStatus } from '@/auth';
 import { redirect } from 'next/navigation';
+import { connection } from 'next/server';
 import Image from 'next/image';
 import Link from 'next/link';
 import { PICORE_URL } from '@/lib/picore/config';
@@ -23,6 +24,7 @@ interface LoginPageProps {
 
 /** Log in with a PI-CORE account (PI-CORE D-16). Access (admin / pengurus) is set in PI-CORE > Integrasi. */
 export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
+  await connection(); // per-request: reads the PI-CORE session
   const status = await getAccessStatus();
   const { google } = await searchParams;
 
