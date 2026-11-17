@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { reports } from '@/lib/db/schema';
-import { verifyAdminSession } from '@/auth';
+import { requireLynkRole } from '@/lib/api-auth';
 import { desc, eq } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
-  const auth = await verifyAdminSession();
-  if (!auth.authorized) {
-    return NextResponse.json({ error: 'Tidak memiliki hak akses administrator.' }, { status: 401 });
-  }
+  const guard = await requireLynkRole('admin');
+  if (!guard.ok) return guard.response;
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status') || 'pending';

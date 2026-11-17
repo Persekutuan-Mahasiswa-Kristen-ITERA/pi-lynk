@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { links } from '@/lib/db/schema';
-import { verifyAdminSession } from '@/auth';
+import { requireLynkRole } from '@/lib/api-auth';
 import { validateDestinationUrl } from '@/lib/validation';
 import { eq } from 'drizzle-orm';
+import { canManageLink, forbiddenLinkChange, isAdmin } from '@/lib/permissions';
+import { recordAudit } from '@/lib/audit';
+
+async function findLink(id: number) {
+  const rows = await db.select().from(links).where(eq(links.id, id)).limit(1);
+  return rows[0] ?? null;
+}
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 
@@ -12,10 +19,9 @@ interface RouteContext {
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
-  const auth = await verifyAdminSession();
-  if (!auth.authorized) {
-    return NextResponse.json({ error: 'Tidak memiliki hak akses administrator.' }, { status: 401 });
-  }
+  const guard = await requireLynkRole('pengurus');
+  if (!guard.ok) return guard.response;
+  const auth = guard.caller;
 
   const { id: rawId } = await params;
   const id = parseInt(rawId, 10);
@@ -25,6 +31,18 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
   try {
     const body = await request.json();
+    const existing = await findLink(id);
+    if (!existing) {
+      return NextResponse.json({ error: 'Tautan tidak ditemukan.' }, { status: 404 });
+    }
+    if (!canManageLink(auth.role, auth.email, existing)) {
+      return NextResponse.json({ error: 'Anda hanya bisa mengubah tautan buatan Anda sendiri.' }, { status: 403 });
+    }
+    const forbidden = forbiddenLinkChange(auth.role, { status: body.status, isOfficial: body.isOfficial }, existing);
+    if (forbidden) {
+      return NextResponse.json({ error: forbidden }, { status: 403 });
+    }
+
     const updateData: Partial<typeof links.$inferInsert> = {
       updatedAt: new Date(),
     };
@@ -52,7 +70,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       updateData.statusReason = body.statusReason ? body.statusReason.trim() : null;
     }
 
-    if (body.isOfficial !== undefined) {
+    if (body.isOfficial !== undefined && isAdmin(auth.role)) {
       updateData.isOfficial = Boolean(body.isOfficial);
     }
 
@@ -78,7 +96,24 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Tautan tidak ditemukan.' }, { status: 404 });
     }
 
-    return NextResponse.json(updated[0]);
+    const after = updated[0];
+    const changed: Record<string, { from: unknown; to: unknown }> = {};
+    for (const key of ['destinationUrl', 'title', 'status', 'statusReason', 'isOfficial', 'expiresAt'] as const) {
+      const from = existing[key] instanceof Date ? (existing[key] as Date).toISOString() : existing[key];
+      const to = after[key] instanceof Date ? (after[key] as Date).toISOString() : after[key];
+      if (from !== to) changed[key] = { from, to };
+    }
+    if (Object.keys(changed).length > 0) {
+      await recordAudit(auth, {
+        action: 'link.update',
+        targetType: 'link',
+        targetId: after.id,
+        summary: `Mengubah /${after.slug}: ${Object.keys(changed).join(', ')}`,
+        details: changed,
+      });
+    }
+
+    return NextResponse.json(after);
   } catch (error) {
     console.error('Error updating admin link:', error);
     return NextResponse.json({ error: 'Gagal memperbarui tautan.' }, { status: 500 });
@@ -86,10 +121,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
-  const auth = await verifyAdminSession();
-  if (!auth.authorized) {
-    return NextResponse.json({ error: 'Tidak memiliki hak akses administrator.' }, { status: 401 });
-  }
+  const guard = await requireLynkRole('pengurus');
+  if (!guard.ok) return guard.response;
+  const auth = guard.caller;
 
   const { id: rawId } = await params;
   const id = parseInt(rawId, 10);
@@ -98,6 +132,14 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
   }
 
   try {
+    const existing = await findLink(id);
+    if (!existing) {
+      return NextResponse.json({ error: 'Tautan tidak ditemukan.' }, { status: 404 });
+    }
+    if (!canManageLink(auth.role, auth.email, existing)) {
+      return NextResponse.json({ error: 'Anda hanya bisa menghapus tautan buatan Anda sendiri.' }, { status: 403 });
+    }
+
     const deleted = await db
       .delete(links)
       .where(eq(links.id, id))
@@ -106,6 +148,14 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     if (deleted.length === 0) {
       return NextResponse.json({ error: 'Tautan tidak ditemukan.' }, { status: 404 });
     }
+
+    await recordAudit(auth, {
+      action: 'link.delete',
+      targetType: 'link',
+      targetId: existing.id,
+      summary: `Menghapus /${existing.slug} → ${existing.destinationUrl}`,
+      details: { slug: existing.slug, destinationUrl: existing.destinationUrl, createdBy: existing.createdBy, clickCount: existing.clickCount },
+    });
 
     return NextResponse.json({ message: 'Tautan berhasil dihapus.', link: deleted[0] });
   } catch (error) {

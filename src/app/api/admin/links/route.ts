@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { links } from '@/lib/db/schema';
-import { verifyAdminSession } from '@/auth';
+import { requireLynkRole } from '@/lib/api-auth';
 import { validateDestinationUrl, validateSlug } from '@/lib/validation';
-import { desc, eq, ilike, or, and, count } from 'drizzle-orm';
+import { desc, eq, ilike, or, and, count, sql } from 'drizzle-orm';
+import { isAdmin } from '@/lib/permissions';
+import { recordAudit } from '@/lib/audit';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 
 export async function GET(request: NextRequest) {
-  const auth = await verifyAdminSession();
-  if (!auth.authorized) {
-    return NextResponse.json({ error: 'Tidak memiliki hak akses administrator.' }, { status: 401 });
-  }
+  const guard = await requireLynkRole('pengurus');
+  if (!guard.ok) return guard.response;
+  const auth = guard.caller;
 
   const { searchParams } = new URL(request.url);
   const q = searchParams.get('q') || '';
@@ -23,6 +24,11 @@ export async function GET(request: NextRequest) {
 
   try {
     const conditions = [];
+
+    // Pengurus see only the links they created; admins see all.
+    if (!isAdmin(auth.role)) {
+      conditions.push(sql`lower(${links.createdBy}) = ${auth.email}`);
+    }
 
     if (q) {
       conditions.push(
@@ -78,10 +84,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await verifyAdminSession();
-  if (!auth.authorized) {
-    return NextResponse.json({ error: 'Tidak memiliki hak akses administrator.' }, { status: 401 });
-  }
+  const guard = await requireLynkRole('pengurus');
+  if (!guard.ok) return guard.response;
+  const auth = guard.caller;
 
   try {
     const body = await request.json();
@@ -91,8 +96,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Slug wajib diisi.' }, { status: 400 });
     }
 
-    // Admin can use protected keywords (pmk, itera, official, etc.)
-    const slugResult = validateSlug(slug, true);
+    // Only admins may use protected keywords (pmk, itera, official, etc.) and mark links official.
+    const slugResult = validateSlug(slug, isAdmin(auth.role));
     if (!slugResult.valid) {
       return NextResponse.json({ error: slugResult.error }, { status: 400 });
     }
@@ -116,12 +121,20 @@ export async function POST(request: NextRequest) {
         slug: slugResult.slug!,
         destinationUrl: urlResult.url!,
         title: title ? title.trim() : null,
-        isOfficial: Boolean(isOfficial),
+        isOfficial: isAdmin(auth.role) ? Boolean(isOfficial) : false,
         createdBy: auth.email,
         status: 'active',
         expiresAt: parsedExpiresAt,
       })
       .returning();
+
+    await recordAudit(auth, {
+      action: 'link.create',
+      targetType: 'link',
+      targetId: newLink[0].id,
+      summary: `Membuat /${newLink[0].slug} → ${newLink[0].destinationUrl}`,
+      details: { slug: newLink[0].slug, destinationUrl: newLink[0].destinationUrl, isOfficial: newLink[0].isOfficial },
+    });
 
     return NextResponse.json(newLink[0], { status: 201 });
   } catch (error: unknown) {
