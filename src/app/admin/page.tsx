@@ -19,5 +19,5 @@ export default async function AdminPage() {
     redirect('/admin/login');
   }
 
-  return <AdminDashboardClient adminEmail={auth.email || 'Admin'} />;
+  return <AdminDashboardClient adminEmail={auth.email} role={auth.role} />;
 }

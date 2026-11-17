@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { links } from '@/lib/db/schema';
-import { verifyAdminSession } from '@/auth';
+import { requireLynkRole } from '@/lib/api-auth';
+import { recordAudit } from '@/lib/audit';
 import { validateDestinationUrl, validateSlug } from '@/lib/validation';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
@@ -14,10 +15,9 @@ interface ImportItem {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await verifyAdminSession();
-  if (!auth.authorized) {
-    return NextResponse.json({ error: 'Tidak memiliki hak akses administrator.' }, { status: 401 });
-  }
+  const guard = await requireLynkRole('admin');
+  if (!guard.ok) return guard.response;
+  const auth = guard.caller;
 
   try {
     const body = await request.json();
@@ -75,6 +75,13 @@ export async function POST(request: NextRequest) {
         }
       }
     }
+
+    await recordAudit(auth, {
+      action: 'links.import',
+      targetType: 'import',
+      summary: `Impor ${items.length} tautan: ${imported.length} berhasil, ${skipped.length} dilewati`,
+      details: { imported: imported.map((l) => l.slug), skippedCount: skipped.length },
+    });
 
     return NextResponse.json({
       message: `Impor selesai: ${imported.length} berhasil, ${skipped.length} dilewati.`,

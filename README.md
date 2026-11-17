@@ -12,7 +12,7 @@ PI-LYNK adalah sistem shortlink dan generator QR code resmi milik **Persekutuan 
 5. [Konfigurasi Layanan Eksternal](#-konfigurasi-layanan-eksternal)
    - [Setup Neon Postgres](#1-setup-neon-postgres-pooled-connection)
    - [Setup Cloudflare Turnstile](#2-setup-cloudflare-turnstile)
-   - [Setup Google OAuth (Auth.js)](#3-setup-google-oauth-authjs)
+   - [Login admin lewat PI-CORE](#3-login-admin-lewat-pi-core)
 6. [Deployment ke Vercel](#-deployment-ke-vercel)
 7. [Konfigurasi Custom Domain (s.pmkitera.web.id)](#-konfigurasi-custom-domain-spmkiterawebid)
 8. [Cara Mengganti Domain di Masa Depan](#-cara-mengganti-domain-di-masa-depan)
@@ -41,7 +41,7 @@ PI-LYNK adalah sistem shortlink dan generator QR code resmi milik **Persekutuan 
   - Cloudflare Turnstile captcha dengan server-side verification.
   - Rate limiting berbasis hashing IP bersalt di basis data (bebas kendala serverless).
 - **Dashboard Admin (/admin)**:
-  - Autentikasi aman Auth.js via Google OAuth dengan allowlist email administrator (`ADMIN_EMAILS`).
+  - Login admin memakai akun PI-CORE (kata sandi atau Google lewat PI-CORE). Peran **Admin** (semua tautan, laporan, impor, riwayat) dan **Pengurus** (tautan buatan sendiri) diatur di PI-CORE → Integrasi → PI-LYNK. Setiap aksi tercatat di tab **Riwayat**.
   - Pembuatan tautan resmi (dapat menggunakan slug khusus/terlindungi).
   - Manajemen penuh: Ubah target URL, status (aktif/nonaktif/diblokir), alasan moderasi, dan hapus permanen.
   - Antrian laporan tautan mencurigakan (`/laporkan`) dengan tombol resolusi.
@@ -56,7 +56,7 @@ PI-LYNK adalah sistem shortlink dan generator QR code resmi milik **Persekutuan 
 - **Framework**: [Next.js](https://nextjs.org/) (App Router, TypeScript, Tailwind CSS)
 - **Database & Driver**: [Neon Postgres](https://neon.tech/) Serverless HTTP Driver (`@neondatabase/serverless`)
 - **ORM & Migrasi**: [Drizzle ORM](https://orm.drizzle.team/) & `drizzle-kit`
-- **Autentikasi**: [Auth.js](https://authjs.dev/) (NextAuth v5 beta) + Google OAuth Provider
+- **Autentikasi**: akun PI-CORE (Supabase Auth milik PI-CORE, `@supabase/ssr`); peran dari `my_app_roles('lynk')`
 - **Captcha**: [Cloudflare Turnstile](https://www.cloudflare.com/products/turnstile/)
 - **QR Code**: [qrcode](https://www.npmjs.com/package/qrcode) (Client-side Canvas & PNG export)
 
@@ -112,10 +112,9 @@ npx tsc --noEmit
 |---|---|---|---|
 | `NEXT_PUBLIC_BASE_URL` | **Ya** | `https://s.pmkitera.web.id` | URL dasar shortlink tanpa garis miring penutup (`/`). |
 | `DATABASE_URL` | **Ya** | `postgresql://user:pass@ep-xyz-pooler.neon.tech/neondb?sslmode=require` | Connection string Neon Postgres (Gunakan mode **Pooled / Transaction Pooler**). |
-| `AUTH_SECRET` | **Ya** | `s3cr3t_str1ng_h4sh...` | Kunci rahasia sesi Auth.js (buat dengan `openssl rand -base64 32`). |
-| `AUTH_GOOGLE_ID` | **Ya** | `xxx.apps.googleusercontent.com` | Client ID Google OAuth Console. |
-| `AUTH_GOOGLE_SECRET` | **Ya** | `GOCSPX-xxx` | Client Secret Google OAuth Console. |
-| `ADMIN_EMAILS` | **Ya** | `bph.pmk@gmail.com,admin@pmkitera.web.id` | Daftar email Google admin yang diizinkan mengakses `/admin`, dipisahkan tanda koma. |
+| `NEXT_PUBLIC_PICORE_URL` | **Ya** | `https://core.pmkitera.web.id` | Alamat PI-CORE (tautan "lupa kata sandi" dan login Google). |
+| `NEXT_PUBLIC_PICORE_SUPABASE_URL` | **Ya** | `https://xxx.supabase.co` | URL Supabase milik PI-CORE (nilai publik). |
+| `NEXT_PUBLIC_PICORE_SUPABASE_PUBLISHABLE_KEY` | **Ya** | `sb_publishable_...` | Publishable key Supabase PI-CORE (nilai publik). |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Opsional di dev | `0x4AAAAAA...` | Site key Cloudflare Turnstile publik. |
 | `TURNSTILE_SECRET_KEY` | Opsional di dev | `0x4AAAAAA...` | Secret key Cloudflare Turnstile privat. |
 | `RATE_LIMIT_SALT` | **Ya** | `random_salt_string_123` | Salt acak untuk melakukan hash sha256 pada IP pengunjung (menjaga privasi). |
@@ -143,17 +142,12 @@ npx tsc --noEmit
 3. Salin **Site Key** ke `NEXT_PUBLIC_TURNSTILE_SITE_KEY` dan **Secret Key** ke `TURNSTILE_SECRET_KEY`.
 > *Catatan: Di mode development, jika kedua kunci ini tidak diisi, sistem otomatis mengaktifkan bypass verifikasi agar mempermudah pengujian.*
 
-### 3. Setup Google OAuth (Auth.js)
-1. Buka [Google Cloud Console](https://console.cloud.google.com/apis/credentials).
-2. Buat **OAuth 2.0 Client IDs** (Tipe: *Web application*).
-3. Tambahkan **Authorized JavaScript origins**:
-   - `http://localhost:3000` (lokal)
-   - `https://s.pmkitera.web.id` (produksi)
-4. Tambahkan **Authorized redirect URIs**:
-   - `http://localhost:3000/api/auth/callback/google` (lokal)
-   - `https://s.pmkitera.web.id/api/auth/callback/google` (produksi)
-5. Masukkan Client ID dan Secret ke environment variables.
-6. Daftarkan email akun Google pengurus yang berwenang di variabel `ADMIN_EMAILS`.
+### 3. Login admin lewat PI-CORE
+
+PI-LYNK tidak punya daftar admin atau OAuth client sendiri.
+1. Orangnya harus punya akun PI-CORE yang aktif (dibuat admin PI-CORE).
+2. Super admin PI-CORE memberi peran di **PI-CORE → Integrasi → PI-LYNK**: *Admin PI-LYNK* atau *Pengurus PI-LYNK* (per anggota, role, posisi, atau unit; aturan unit/posisi/role mengikuti periode aktif).
+3. "Masuk dengan Google" di PI-LYNK diteruskan ke PI-CORE (alamat `https://s.pmkitera.web.id/auth/google/finish` sudah terdaftar di PI-CORE).
 
 ---
 

@@ -33,8 +33,27 @@ interface ReportItem {
   createdAt: string;
 }
 
-export default function AdminDashboardClient({ adminEmail }: { adminEmail: string }) {
-  const [activeTab, setActiveTab] = useState<'links' | 'reports' | 'import'>('links');
+interface AuditItem {
+  id: number;
+  actorEmail: string;
+  actorRole: string;
+  action: string;
+  summary: string;
+  createdAt: string;
+}
+
+const ACTION_LABEL: Record<string, string> = {
+  'link.create': 'Buat',
+  'link.update': 'Ubah',
+  'link.delete': 'Hapus',
+  'links.import': 'Impor',
+  'report.update': 'Laporan',
+};
+
+/** role (from PI-CORE): admin sees everything; pengurus manages only the links they created. */
+export default function AdminDashboardClient({ adminEmail, role }: { adminEmail: string; role: 'admin' | 'pengurus' }) {
+  const admin = role === 'admin';
+  const [activeTab, setActiveTab] = useState<'links' | 'reports' | 'import' | 'history'>('links');
   
   // Links state
   const [links, setLinks] = useState<LinkItem[]>([]);
@@ -70,6 +89,13 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
   const [importResult, setImportResult] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // History (admins)
+  const [history, setHistory] = useState<AuditItem[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPages, setHistoryPages] = useState(1);
+  const [historySearch, setHistorySearch] = useState('');
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const reloadData = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -124,12 +150,31 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
         }
       };
       loadReports();
+    } else if (activeTab === 'history') {
+      const loadHistory = async () => {
+        setIsLoadingHistory(true);
+        try {
+          const params = new URLSearchParams({ page: historyPage.toString() });
+          if (historySearch) params.append('q', historySearch);
+          const res = await fetch(`/api/admin/audit?${params.toString()}`);
+          if (res.ok && !ignore) {
+            const data = await res.json();
+            setHistory(data.items || []);
+            setHistoryPages(data.pagination.totalPages || 1);
+          }
+        } catch (err) {
+          console.error('Failed to load history:', err);
+        } finally {
+          if (!ignore) setIsLoadingHistory(false);
+        }
+      };
+      loadHistory();
     }
 
     return () => {
       ignore = true;
     };
-  }, [activeTab, page, search, statusFilter, officialFilter, reportStatusFilter, refreshKey]);
+  }, [activeTab, page, search, statusFilter, officialFilter, reportStatusFilter, refreshKey, historyPage, historySearch]);
 
   // Copy shortlink helper
   const handleCopy = (link: LinkItem) => {
@@ -153,7 +198,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
           slug: newSlug,
           destinationUrl: newDestinationUrl,
           title: newTitle || undefined,
-          isOfficial: true,
+          isOfficial: admin,
           expiresAt: newExpiresAt || undefined,
         }),
       });
@@ -191,7 +236,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
           title: editingLink.title,
           status: editingLink.status,
           statusReason: editingLink.statusReason,
-          isOfficial: editingLink.isOfficial,
+          ...(admin ? { isOfficial: editingLink.isOfficial } : {}),
           expiresAt: editingLink.expiresAt || null,
         }),
       });
@@ -303,7 +348,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
 
           <div className="flex items-center gap-4 text-xs sm:text-sm">
             <span className="text-brown-300 hidden md:inline truncate max-w-xs">
-              {adminEmail}
+              {adminEmail} · {admin ? 'Admin' : 'Pengurus'}
             </span>
             <Link
               href="/"
@@ -311,12 +356,14 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
             >
               Lihat Situs
             </Link>
-            <Link
-              href="/api/auth/signout"
-              className="px-3 py-1.5 rounded bg-brown-800 hover:bg-brown-700 text-brown-200 hover:text-white transition-colors"
-            >
-              Keluar
-            </Link>
+            <form action="/auth/logout" method="post">
+              <button
+                type="submit"
+                className="px-3 py-1.5 rounded bg-brown-800 hover:bg-brown-700 text-brown-200 hover:text-white transition-colors"
+              >
+                Keluar
+              </button>
+            </form>
           </div>
         </div>
       </header>
@@ -334,8 +381,10 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
                   : 'bg-white text-brown-700 hover:bg-brown-100'
               }`}
             >
-              Daftar Tautan ({totalLinks})
+              {admin ? 'Daftar Tautan' : 'Tautan Saya'} ({totalLinks})
             </button>
+            {admin && (
+              <>
             <button
               onClick={() => setActiveTab('reports')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -356,6 +405,18 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
             >
               Impor Tautan Lama
             </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === 'history'
+                  ? 'bg-brown-800 text-white shadow-sm'
+                  : 'bg-white text-brown-700 hover:bg-brown-100'
+              }`}
+            >
+              Riwayat
+            </button>
+              </>
+            )}
           </div>
 
           {activeTab === 'links' && (
@@ -366,7 +427,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              Buat Tautan Resmi
+              {admin ? 'Buat Tautan Resmi' : 'Buat Tautan'}
             </button>
           )}
         </div>
@@ -724,6 +785,68 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
             </button>
           </div>
         )}
+        {/* Tab 4: History (admins) */}
+        {activeTab === 'history' && admin && (
+          <div className="space-y-4">
+            <div className="bg-white p-4 rounded-xl border border-brown-200 shadow-sm">
+              <input
+                type="search"
+                value={historySearch}
+                onChange={(e) => {
+                  setHistorySearch(e.target.value);
+                  setHistoryPage(1);
+                }}
+                placeholder="Cari email pelaku atau isi riwayat…"
+                className="w-full md:w-96 px-3 py-2 text-sm border border-brown-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brown-600"
+              />
+            </div>
+            <div className="bg-white rounded-xl border border-brown-200 shadow-sm overflow-hidden">
+              {isLoadingHistory ? (
+                <p className="p-6 text-sm text-brown-600">Memuat riwayat…</p>
+              ) : history.length === 0 ? (
+                <p className="p-6 text-sm text-brown-600">Belum ada riwayat.</p>
+              ) : (
+                <ul className="divide-y divide-brown-100">
+                  {history.map((h) => (
+                    <li key={h.id} className="px-4 py-3 text-sm flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
+                      <span className="text-xs text-brown-500 md:w-40 shrink-0">
+                        {new Date(h.createdAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}
+                      </span>
+                      <span className="inline-flex w-fit items-center rounded bg-brown-100 px-2 py-0.5 text-xs font-semibold text-brown-800 shrink-0">
+                        {ACTION_LABEL[h.action] ?? h.action}
+                      </span>
+                      <span className="flex-1 min-w-0 break-words text-brown-900">{h.summary}</span>
+                      <span className="text-xs text-brown-600 md:text-right shrink-0">
+                        {h.actorEmail} · {h.actorRole === 'admin' ? 'Admin' : 'Pengurus'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {historyPages > 1 && (
+              <div className="flex items-center justify-end gap-2 text-sm">
+                <button
+                  disabled={historyPage <= 1}
+                  onClick={() => setHistoryPage((p) => p - 1)}
+                  className="px-3 py-1.5 rounded border border-brown-300 bg-white disabled:opacity-50"
+                >
+                  Sebelumnya
+                </button>
+                <span className="text-brown-700">
+                  {historyPage} / {historyPages}
+                </span>
+                <button
+                  disabled={historyPage >= historyPages}
+                  onClick={() => setHistoryPage((p) => p + 1)}
+                  className="px-3 py-1.5 rounded border border-brown-300 bg-white disabled:opacity-50"
+                >
+                  Berikutnya
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Modal: Create Official Link */}
@@ -731,13 +854,13 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-brown-200">
             <h3 className="font-serif font-bold text-xl text-brown-900 mb-4">
-              Buat Tautan Resmi PMK ITERA
+              {admin ? 'Buat Tautan Resmi PMK ITERA' : 'Buat Tautan'}
             </h3>
 
             <form onSubmit={handleCreateOfficialLink} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-brown-800 mb-1">
-                  Custom Slug (Boleh Menggunakan Kata Kunci Resmi) *
+                  {admin ? 'Custom Slug (Boleh Menggunakan Kata Kunci Resmi) *' : 'Custom Slug *'}
                 </label>
                 <div className="flex border border-brown-300 rounded-lg overflow-hidden">
                   <span className="px-3 py-2 bg-brown-50 text-xs font-mono text-brown-600 border-r border-brown-200">
@@ -868,7 +991,9 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
                 >
                   <option value="active">Aktif (Dapat diakses)</option>
                   <option value="inactive">Nonaktif (Menampilkan 410 Alasan)</option>
-                  <option value="blocked">Diblokir (Pelanggaran Ketentuan)</option>
+                  {(admin || editingLink.status === 'blocked') && (
+                    <option value="blocked" disabled={!admin}>Diblokir (Pelanggaran Ketentuan)</option>
+                  )}
                 </select>
               </div>
 
@@ -887,7 +1012,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
                 </div>
               )}
 
-              <div className="flex items-center gap-2">
+              {admin && (<div className="flex items-center gap-2">
                 <input
                   type="checkbox"
                   id="isOfficialCheckbox"
@@ -898,7 +1023,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
                 <label htmlFor="isOfficialCheckbox" className="text-xs font-medium text-brown-800">
                   Tandai sebagai Tautan Resmi PMK ITERA
                 </label>
-              </div>
+              </div>)}
 
               <div className="flex justify-end gap-2 pt-4 border-t border-brown-100">
                 <button

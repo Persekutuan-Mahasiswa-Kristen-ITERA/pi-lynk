@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, integer, varchar, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, boolean, integer, varchar, index, uniqueIndex, jsonb } from 'drizzle-orm/pg-core';
 
 export const links = pgTable('links', {
   id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
@@ -46,7 +46,27 @@ export const rateLimits = pgTable('rate_limits', {
   index('rate_limits_ip_action_window_idx').on(table.ipHash, table.action, table.windowStart),
 ]));
 
+/**
+ * Who did what in the admin area (owner request 2026-11-18). Written by the API routes after each
+ * change; read by admins in the dashboard ("Riwayat"). Actor = PI-CORE account email.
+ */
+export const auditLog = pgTable('audit_log', {
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+  actorEmail: varchar('actor_email', { length: 255 }).notNull(),
+  actorRole: varchar('actor_role', { length: 20 }).notNull(), // admin | pengurus
+  action: varchar('action', { length: 40 }).notNull(), // link.create, link.update, link.delete, links.import, report.update
+  targetType: varchar('target_type', { length: 20 }).notNull(), // link | report | import
+  targetId: integer('target_id'),
+  summary: text('summary').notNull(),
+  details: jsonb('details'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ([
+  index('audit_log_created_at_idx').on(table.createdAt),
+  index('audit_log_actor_idx').on(table.actorEmail),
+]));
+
 export type Link = typeof links.$inferSelect;
 export type NewLink = typeof links.$inferInsert;
 export type Report = typeof reports.$inferSelect;
 export type NewReport = typeof reports.$inferInsert;
+export type AuditEntry = typeof auditLog.$inferSelect;

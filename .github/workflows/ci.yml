@@ -51,10 +51,9 @@ jobs:
         env:
           NEXT_PUBLIC_BASE_URL: http://localhost:3000
           DATABASE_URL: postgresql://ci:ci@ep-ci-placeholder.us-east-2.aws.neon.tech/ci?sslmode=require
-          AUTH_SECRET: ci-placeholder-secret-not-real-0000000000
-          AUTH_GOOGLE_ID: ci-placeholder
-          AUTH_GOOGLE_SECRET: ci-placeholder
-          ADMIN_EMAILS: ci@example.com
+          NEXT_PUBLIC_PICORE_URL: https://core.invalid
+          NEXT_PUBLIC_PICORE_SUPABASE_URL: https://picore.invalid
+          NEXT_PUBLIC_PICORE_SUPABASE_PUBLISHABLE_KEY: ci-placeholder
           NEXT_PUBLIC_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
           TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
           RATE_LIMIT_SALT: ci-salt

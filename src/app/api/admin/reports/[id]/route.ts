@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { reports } from '@/lib/db/schema';
-import { verifyAdminSession } from '@/auth';
+import { requireLynkRole } from '@/lib/api-auth';
 import { eq } from 'drizzle-orm';
+import { recordAudit } from '@/lib/audit';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
-  const auth = await verifyAdminSession();
-  if (!auth.authorized) {
-    return NextResponse.json({ error: 'Tidak memiliki hak akses administrator.' }, { status: 401 });
-  }
+  const guard = await requireLynkRole('admin');
+  if (!guard.ok) return guard.response;
+  const auth = guard.caller;
 
   const { id: rawId } = await params;
   const id = parseInt(rawId, 10);
@@ -41,6 +41,14 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     if (updated.length === 0) {
       return NextResponse.json({ error: 'Laporan tidak ditemukan.' }, { status: 404 });
     }
+
+    await recordAudit(auth, {
+      action: 'report.update',
+      targetType: 'report',
+      targetId: updated[0].id,
+      summary: `Laporan #${updated[0].id} (${updated[0].slugOrUrl}) → ${status === 'resolved' ? 'selesai' : 'menunggu'}`,
+      details: { status },
+    });
 
     return NextResponse.json(updated[0]);
   } catch (error) {
