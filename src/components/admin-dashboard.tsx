@@ -51,6 +51,19 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 /** role (from PI-CORE): admin sees everything; pengurus manages only the links they created. */
+
+/** "https://s.pmkitera.web.id/abc?x=1", "s.pmkitera.web.id/abc" or "abc" → "abc". */
+function reportedSlug(value: string): string {
+  const v = value.trim();
+  try {
+    const url = new URL(v.includes('://') ? v : `https://${v}`);
+    if (url.pathname && url.pathname !== '/') return decodeURIComponent(url.pathname.replace(/^\/+|\/+$/g, '')).toLowerCase();
+  } catch {
+    // not a URL: treat as a slug
+  }
+  return v.replace(/^\/+/, '').toLowerCase();
+}
+
 export default function AdminDashboardClient({ adminEmail, role }: { adminEmail: string; role: 'admin' | 'pengurus' }) {
   const admin = role === 'admin';
   const [activeTab, setActiveTab] = useState<'links' | 'reports' | 'import' | 'history'>('links');
@@ -77,6 +90,9 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
   const [newTitle, setNewTitle] = useState('');
   const [newExpiresAt, setNewExpiresAt] = useState('');
   const [createError, setCreateError] = useState('');
+  // Feedback shown in the page instead of browser alert() popups.
+  const [editError, setEditError] = useState('');
+  const [notice, setNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
   // Reports state
@@ -243,13 +259,15 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
 
       if (res.ok) {
         setEditingLink(null);
+        setEditError('');
+        setNotice({ kind: 'success', text: 'Perubahan tersimpan.' });
         reloadData();
       } else {
         const err = await res.json();
-        alert(err.error || 'Gagal menyimpan perubahan.');
+        setEditError(err.error || 'Gagal menyimpan perubahan.');
       }
     } catch {
-      alert('Terjadi kesalahan jaringan.');
+      setEditError('Terjadi kesalahan jaringan.');
     }
   };
 
@@ -264,13 +282,14 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
         method: 'DELETE',
       });
       if (res.ok) {
+        setNotice({ kind: 'success', text: `Tautan /${slug} dihapus.` });
         reloadData();
       } else {
         const err = await res.json();
-        alert(err.error || 'Gagal menghapus tautan.');
+        setNotice({ kind: 'error', text: err.error || 'Gagal menghapus tautan.' });
       }
     } catch {
-      alert('Terjadi kesalahan jaringan.');
+      setNotice({ kind: 'error', text: 'Terjadi kesalahan jaringan.' });
     }
   };
 
@@ -284,9 +303,11 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
       });
       if (res.ok) {
         reloadData();
+      } else {
+        setNotice({ kind: 'error', text: 'Gagal memperbarui status laporan.' });
       }
     } catch {
-      alert('Gagal memperbarui status laporan.');
+      setNotice({ kind: 'error', text: 'Gagal memperbarui status laporan.' });
     }
   };
 
@@ -370,6 +391,20 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
 
       {/* Main Body */}
       <div className="flex-1 container mx-auto px-4 py-8 max-w-7xl">
+        {notice && (
+          <div
+            role={notice.kind === 'error' ? 'alert' : 'status'}
+            className={`mb-4 flex items-start justify-between gap-3 rounded-lg border px-4 py-3 text-sm ${
+              notice.kind === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-800'
+            }`}
+          >
+            <span>{notice.text}</span>
+            <button type="button" onClick={() => setNotice(null)} className="text-xs underline">
+              Tutup
+            </button>
+          </div>
+        )}
+
         {/* Navigation Tabs */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6 border-b border-brown-200 pb-3">
           <div className="flex gap-2">
@@ -596,7 +631,7 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
 
                               {/* Edit */}
                               <button
-                                onClick={() => setEditingLink(link)}
+                                onClick={() => { setEditError(""); setEditingLink(link); }}
                                 title="Edit Moderasi"
                                 className="p-1.5 text-brown-600 hover:text-brown-900 hover:bg-brown-100 rounded"
                               >
@@ -707,6 +742,18 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
                       <tr key={report.id} className="hover:bg-brown-50/50">
                         <td className="py-3 px-4 font-mono text-xs font-medium text-red-700">
                           {report.slugOrUrl}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Open the links tab filtered to the reported slug, ready to deactivate or block.
+                              setSearch(reportedSlug(report.slugOrUrl));
+                              setPage(1);
+                              setActiveTab('links');
+                            }}
+                            className="ml-2 font-sans text-[11px] font-semibold text-brown-700 underline hover:text-brown-900"
+                          >
+                            Cari tautan
+                          </button>
                         </td>
                         <td className="py-3 px-4 text-brown-800 text-xs max-w-sm">
                           {report.reason}
@@ -859,7 +906,7 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
 
             <form onSubmit={handleCreateOfficialLink} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-brown-800 mb-1">
+                <label htmlFor="lynk-new-slug" className="block text-xs font-semibold text-brown-800 mb-1">
                   {admin ? 'Custom Slug (Boleh Menggunakan Kata Kunci Resmi) *' : 'Custom Slug *'}
                 </label>
                 <div className="flex border border-brown-300 rounded-lg overflow-hidden">
@@ -867,6 +914,7 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
                     {BASE_URL}/
                   </span>
                   <input
+                  id="lynk-new-slug"
                     type="text"
                     required
                     value={newSlug}
@@ -878,10 +926,11 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-brown-800 mb-1">
+                <label htmlFor="lynk-new-url" className="block text-xs font-semibold text-brown-800 mb-1">
                   URL Tujuan *
                 </label>
                 <input
+                  id="lynk-new-url"
                   type="url"
                   required
                   value={newDestinationUrl}
@@ -892,10 +941,11 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-brown-800 mb-1">
+                <label htmlFor="lynk-new-title" className="block text-xs font-semibold text-brown-800 mb-1">
                   Judul / Keterangan Tautan (Opsional)
                 </label>
                 <input
+                  id="lynk-new-title"
                   type="text"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
@@ -905,10 +955,11 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-brown-800 mb-1">
+                <label htmlFor="lynk-new-expiry" className="block text-xs font-semibold text-brown-800 mb-1">
                   Tanggal Kedaluwarsa (Opsional)
                 </label>
                 <input
+                  id="lynk-new-expiry"
                   type="datetime-local"
                   value={newExpiresAt}
                   onChange={(e) => setNewExpiresAt(e.target.value)}
@@ -956,10 +1007,11 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
 
             <form onSubmit={handleUpdateLink} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-brown-800 mb-1">
+                <label htmlFor="lynk-edit-url" className="block text-xs font-semibold text-brown-800 mb-1">
                   URL Tujuan
                 </label>
                 <input
+                  id="lynk-edit-url"
                   type="url"
                   required
                   value={editingLink.destinationUrl}
@@ -969,10 +1021,11 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-brown-800 mb-1">
+                <label htmlFor="lynk-edit-title" className="block text-xs font-semibold text-brown-800 mb-1">
                   Judul / Label
                 </label>
                 <input
+                  id="lynk-edit-title"
                   type="text"
                   value={editingLink.title || ''}
                   onChange={(e) => setEditingLink({ ...editingLink, title: e.target.value })}
@@ -981,10 +1034,11 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-brown-800 mb-1">
+                <label htmlFor="lynk-edit-status" className="block text-xs font-semibold text-brown-800 mb-1">
                   Status Tautan
                 </label>
                 <select
+                  id="lynk-edit-status"
                   value={editingLink.status}
                   onChange={(e) => setEditingLink({ ...editingLink, status: e.target.value as 'active' | 'inactive' | 'blocked' })}
                   className="w-full px-3 py-2 text-sm border border-brown-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brown-600 bg-white"
@@ -999,10 +1053,11 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
 
               {editingLink.status !== 'active' && (
                 <div>
-                  <label className="block text-xs font-semibold text-brown-800 mb-1">
+                  <label htmlFor="lynk-edit-reason" className="block text-xs font-semibold text-brown-800 mb-1">
                     Alasan Nonaktif / Diblokir
                   </label>
                   <input
+                  id="lynk-edit-reason"
                     type="text"
                     value={editingLink.statusReason || ''}
                     onChange={(e) => setEditingLink({ ...editingLink, statusReason: e.target.value })}
@@ -1024,6 +1079,12 @@ export default function AdminDashboardClient({ adminEmail, role }: { adminEmail:
                   Tandai sebagai Tautan Resmi PMK ITERA
                 </label>
               </div>)}
+
+              {editError && (
+                <div role="alert" className="p-2.5 bg-red-50 text-red-700 rounded text-xs border border-red-200">
+                  {editError}
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-4 border-t border-brown-100">
                 <button
