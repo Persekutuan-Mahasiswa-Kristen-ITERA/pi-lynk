@@ -89,7 +89,7 @@ export default async function SlugPage({ params }: SlugPageProps) {
 export async function generateMetadata({ params }: SlugPageProps) {
   const { slug } = await params;
   return {
-    title: `Mengalihkan... | PI-LYNK`,
+    title: 'Mengalihkan...',
     robots: {
       index: false,
       follow: false,

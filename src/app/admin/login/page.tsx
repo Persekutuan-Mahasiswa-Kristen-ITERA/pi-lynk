@@ -9,7 +9,7 @@ import { GOOGLE_LOGIN_MESSAGES, googleLoginError } from '@/lib/auth/google-login
 import { PasswordForm } from './password-form';
 
 export const metadata = {
-  title: 'Masuk Admin | PI-LYNK',
+  title: 'Masuk Admin',
   robots: {
     index: false,
     follow: false,

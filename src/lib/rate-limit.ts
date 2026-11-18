@@ -44,6 +44,9 @@ export async function checkRateLimit(
   const dayStart = new Date(now);
   dayStart.setHours(0, 0, 0, 0);
 
+  // Reports share the limiter, so name the action the visitor actually did.
+  const what = action === 'report' ? 'pengiriman laporan' : 'pembuatan link';
+
   try {
     // Check hourly count
     const hourlyRows = await db
@@ -76,7 +79,7 @@ export async function checkRateLimit(
     if (hourlyCount >= RATE_LIMIT_PER_HOUR) {
       return {
         allowed: false,
-        error: `Batas pembuatan link per jam tercapai (${RATE_LIMIT_PER_HOUR}). Silakan coba lagi nanti.`,
+        error: `Batas ${what} per jam tercapai (${RATE_LIMIT_PER_HOUR}). Silakan coba lagi nanti.`,
         remainingHour: 0,
         remainingDay: Math.max(0, RATE_LIMIT_PER_DAY - dailyCount),
       };
@@ -85,7 +88,7 @@ export async function checkRateLimit(
     if (dailyCount >= RATE_LIMIT_PER_DAY) {
       return {
         allowed: false,
-        error: `Batas pembuatan link per hari tercapai (${RATE_LIMIT_PER_DAY}). Silakan coba lagi besok.`,
+        error: `Batas ${what} per hari tercapai (${RATE_LIMIT_PER_DAY}). Silakan coba lagi besok.`,
         remainingHour: Math.max(0, RATE_LIMIT_PER_HOUR - hourlyCount),
         remainingDay: 0,
       };

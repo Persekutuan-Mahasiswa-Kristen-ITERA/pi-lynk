@@ -120,7 +120,7 @@ npx tsc --noEmit
 | `RATE_LIMIT_SALT` | **Ya** | `random_salt_string_123` | Salt acak untuk melakukan hash sha256 pada IP pengunjung (menjaga privasi). |
 | `RATE_LIMIT_PER_HOUR` | Opsional | `10` | Batas pembuatan link per IP per jam (default: 10). |
 | `RATE_LIMIT_PER_DAY` | Opsional | `30` | Batas pembuatan link per IP per hari (default: 30). |
-| `PUBLIC_CREATION_ENABLED` | Opsional | `true` | Saklar darurat: Set ke `false` jika ingin mengunci pembuatan shortlink publik. |
+| `PUBLIC_CREATION_ENABLED` | Opsional | `true` | Saklar darurat: Set ke `false` jika ingin mengunci pembuatan shortlink publik. Berlaku untuk API dan form di beranda (form membaca nilainya saat build, jadi redeploy setelah mengubahnya). |
 | `PUBLIC_LINK_INTERSTITIAL` | Opsional | `false` | Set ke `true` jika ingin menampilkan halaman peringatan sebelum diarahkan untuk link non-resmi. |
 
 ---

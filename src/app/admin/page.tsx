@@ -4,7 +4,7 @@ import { verifyAdminSession } from '@/auth';
 import AdminDashboardClient from '@/components/admin-dashboard';
 
 export const metadata = {
-  title: 'Dashboard Admin | PI-LYNK',
+  title: 'Dashboard Admin',
   robots: {
     index: false,
     follow: false,
